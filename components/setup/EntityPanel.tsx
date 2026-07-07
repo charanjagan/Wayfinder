@@ -1,70 +1,84 @@
 'use client';
 
-import type { Graph, POI, Waypoint } from '@/lib/types';
-
-const CATEGORY_LABEL: Record<POI['category'], string> = {
-  zone: 'Zone',
-  room: 'Room',
-  facility: 'Facility',
-};
+import type { Zone } from '@/lib/types';
 
 export default function EntityPanel({
-  graph,
+  zones,
+  selectedZoneId,
+  youAreHere,
   onFocus,
-  onDeleteWaypoint,
-  onDeletePoi,
-  onEditPoi,
+  onFocusZone,
+  onRenameZone,
+  onToggleZoneHidden,
+  onDeleteZone,
+  onClearYouAreHere,
 }: {
-  graph: Graph;
+  zones: Zone[];
+  selectedZoneId: string | null;
+  youAreHere: { x: number; y: number } | null;
   onFocus: (x: number, y: number) => void;
-  onDeleteWaypoint: (wp: Waypoint) => void;
-  onDeletePoi: (poi: POI) => void;
-  onEditPoi: (poi: POI) => void;
+  onFocusZone: (zone: Zone) => void;
+  onRenameZone: (zoneId: string, name: string) => void;
+  onToggleZoneHidden: (zoneId: string) => void;
+  onDeleteZone: (zoneId: string) => void;
+  onClearYouAreHere: () => void;
 }) {
   return (
     <aside className="flex w-72 shrink-0 flex-col overflow-y-auto border-l border-slate-200 bg-white">
       <div className="border-b border-slate-100 px-4 py-3">
-        <h2 className="text-sm font-semibold text-slate-700">POIs ({graph.pois.length})</h2>
-        <ul className="mt-2 space-y-1.5">
-          {graph.pois.map((poi) => (
-            <li key={poi.id} className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm hover:bg-slate-50">
-              <button onClick={() => onEditPoi(poi)} className="min-w-0 flex-1 truncate text-left text-slate-700">
-                {poi.name}
-                <span className="ml-1.5 text-xs text-slate-400">{CATEGORY_LABEL[poi.category]}</span>
+        <h2 className="text-sm font-semibold text-slate-700">You Are Here</h2>
+        {youAreHere ? (
+          <div className="mt-2 flex items-center justify-between rounded-md px-2 py-1.5 text-sm hover:bg-slate-50">
+            <span className="truncate text-slate-500">
+              {Math.round(youAreHere.x)}, {Math.round(youAreHere.y)}
+            </span>
+            <div className="flex shrink-0 items-center gap-1.5 text-xs">
+              <button onClick={() => onFocus(youAreHere.x, youAreHere.y)} className="text-indigo-500 hover:underline">
+                Focus
               </button>
-              <div className="flex shrink-0 items-center gap-1.5 text-xs">
-                <button onClick={() => onFocus(poi.x, poi.y)} className="text-indigo-500 hover:underline">
-                  Focus
-                </button>
-                <button onClick={() => onDeletePoi(poi)} className="text-red-500 hover:underline">
-                  Delete
-                </button>
-              </div>
-            </li>
-          ))}
-          {graph.pois.length === 0 && <li className="px-2 py-1 text-xs text-slate-400">No POIs placed yet.</li>}
-        </ul>
+              <button onClick={onClearYouAreHere} className="text-red-500 hover:underline">
+                Clear
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="mt-2 px-2 py-1 text-xs text-slate-400">
+            Not set. Use the &quot;You Are Here&quot; tool and click the map.
+          </p>
+        )}
       </div>
 
       <div className="px-4 py-3">
-        <h2 className="text-sm font-semibold text-slate-700">Waypoints ({graph.waypoints.length})</h2>
+        <h2 className="text-sm font-semibold text-slate-700">Zones ({zones.length})</h2>
+        <p className="mt-1 text-xs text-slate-400">Use the Zone tool: drag on the map to draw, drag a corner to reshape.</p>
         <ul className="mt-2 space-y-1.5">
-          {graph.waypoints.map((wp) => (
-            <li key={wp.id} className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm hover:bg-slate-50">
-              <span className="truncate text-slate-500">
-                {Math.round(wp.x)}, {Math.round(wp.y)}
-              </span>
-              <div className="flex shrink-0 items-center gap-1.5 text-xs">
-                <button onClick={() => onFocus(wp.x, wp.y)} className="text-indigo-500 hover:underline">
+          {zones.map((zone) => (
+            <li
+              key={zone.id}
+              className={`rounded-md px-2 py-1.5 text-sm ${zone.id === selectedZoneId ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}
+            >
+              <div className="flex items-center gap-1.5">
+                <input
+                  value={zone.name}
+                  onChange={(e) => onRenameZone(zone.id, e.target.value)}
+                  onFocus={() => onFocusZone(zone)}
+                  className="min-w-0 flex-1 truncate border-b border-transparent bg-transparent text-slate-700 focus:border-indigo-300 focus:outline-none"
+                />
+              </div>
+              <div className="mt-1 flex shrink-0 items-center gap-2 text-xs">
+                <button onClick={() => onFocusZone(zone)} className="text-indigo-500 hover:underline">
                   Focus
                 </button>
-                <button onClick={() => onDeleteWaypoint(wp)} className="text-red-500 hover:underline">
+                <button onClick={() => onToggleZoneHidden(zone.id)} className="text-slate-500 hover:underline">
+                  {zone.hidden ? 'Unhide' : 'Hide'}
+                </button>
+                <button onClick={() => onDeleteZone(zone.id)} className="text-red-500 hover:underline">
                   Delete
                 </button>
               </div>
             </li>
           ))}
-          {graph.waypoints.length === 0 && <li className="px-2 py-1 text-xs text-slate-400">No waypoints placed yet.</li>}
+          {zones.length === 0 && <li className="px-2 py-1 text-xs text-slate-400">No zones yet.</li>}
         </ul>
       </div>
     </aside>

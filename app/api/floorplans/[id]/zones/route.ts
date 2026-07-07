@@ -1,20 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SESSION_COOKIE, verifySessionToken } from '@/lib/adminAuth';
-import { planExists, readGraph, writeGraph } from '@/lib/storage';
-import type { Graph } from '@/lib/types';
+import { planExists, readZones, writeZones } from '@/lib/storage';
+import type { Zone } from '@/lib/types';
 
 export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
   const exists = await planExists(params.id);
   if (!exists) {
     return NextResponse.json({ error: 'Floor plan not found.' }, { status: 404 });
   }
-  const graph = await readGraph(params.id);
-  return NextResponse.json(graph);
-}
-
-function isValidYouAreHere(value: unknown): value is { x: number; y: number } | null {
-  if (value === null) return true;
-  return typeof value === 'object' && value !== null && typeof (value as { x: unknown }).x === 'number' && typeof (value as { y: unknown }).y === 'number';
+  const zones = await readZones(params.id);
+  return NextResponse.json({ zones });
 }
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
@@ -29,11 +24,11 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     return NextResponse.json({ error: 'Floor plan not found.' }, { status: 404 });
   }
 
-  const body = (await request.json()) as Graph;
-  if (!body?.floorPlan || !isValidYouAreHere(body.youAreHere)) {
-    return NextResponse.json({ error: 'Invalid graph payload.' }, { status: 400 });
+  const body = (await request.json()) as { zones?: Zone[] };
+  if (!Array.isArray(body.zones)) {
+    return NextResponse.json({ error: 'Invalid zones payload.' }, { status: 400 });
   }
 
-  await writeGraph(params.id, body);
+  await writeZones(params.id, body.zones);
   return NextResponse.json({ ok: true });
 }

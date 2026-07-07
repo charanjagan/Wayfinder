@@ -1,72 +1,31 @@
-import type { Edge, Graph, POI, Waypoint } from './types';
+import { findGridPath, type OccupancyGrid } from './pathfinding';
+import type { Zone } from './types';
 
 export function distance(a: { x: number; y: number }, b: { x: number; y: number }): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-export function nearestWaypointId(waypoints: Waypoint[], point: { x: number; y: number }): string | null {
-  let best: Waypoint | null = null;
-  let bestDist = Infinity;
-  for (const wp of waypoints) {
-    const d = distance(wp, point);
-    if (d < bestDist) {
-      bestDist = d;
-      best = wp;
+export function pointInPolygon(point: { x: number; y: number }, points: [number, number][]): boolean {
+  const { x, y } = point;
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const [xi, yi] = points[i];
+    const [xj, yj] = points[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi + 1e-12) + xi) {
+      inside = !inside;
     }
   }
-  return best?.id ?? null;
+  return inside;
 }
 
-type Adjacency = Map<string, { to: string; weight: number }[]>;
-
-function buildAdjacency(waypoints: Waypoint[], edges: Edge[]): Adjacency {
-  const byId = new Map(waypoints.map((w) => [w.id, w]));
-  const adj: Adjacency = new Map(waypoints.map((w) => [w.id, []]));
-  for (const edge of edges) {
-    const from = byId.get(edge.from);
-    const to = byId.get(edge.to);
-    if (!from || !to) continue;
-    const weight = distance(from, to);
-    adj.get(edge.from)?.push({ to: edge.to, weight });
-    adj.get(edge.to)?.push({ to: edge.from, weight });
-  }
-  return adj;
+export function polygonCentroid(points: [number, number][]): { x: number; y: number } {
+  const sum = points.reduce((acc, [x, y]) => ({ x: acc.x + x, y: acc.y + y }), { x: 0, y: 0 });
+  return { x: sum.x / points.length, y: sum.y / points.length };
 }
 
-function dijkstra(adj: Adjacency, startId: string): { dist: Map<string, number>; prev: Map<string, string | null> } {
-  const dist = new Map<string, number>();
-  const prev = new Map<string, string | null>();
-  const visited = new Set<string>();
-
-  for (const id of adj.keys()) {
-    dist.set(id, Infinity);
-    prev.set(id, null);
-  }
-  dist.set(startId, 0);
-
-  while (visited.size < adj.size) {
-    let currentId: string | null = null;
-    let currentDist = Infinity;
-    for (const [id, d] of dist) {
-      if (!visited.has(id) && d < currentDist) {
-        currentDist = d;
-        currentId = id;
-      }
-    }
-    if (currentId === null) break;
-    visited.add(currentId);
-
-    for (const { to, weight } of adj.get(currentId) ?? []) {
-      if (visited.has(to)) continue;
-      const alt = currentDist + weight;
-      if (alt < (dist.get(to) ?? Infinity)) {
-        dist.set(to, alt);
-        prev.set(to, currentId);
-      }
-    }
-  }
-
-  return { dist, prev };
+/** Single source of truth for which zones a visitor is allowed to see. */
+export function filterVisible(zones: Zone[]): Zone[] {
+  return zones.filter((z) => !z.hidden);
 }
 
 export interface RouteResult {
@@ -74,56 +33,22 @@ export interface RouteResult {
   distance: number;
 }
 
-export function routeBetweenPois(graph: Graph, startPoiId: string, endPoiId: string): RouteResult | null {
-  const poiById = new Map(graph.pois.map((p) => [p.id, p]));
-  const start = poiById.get(startPoiId);
-  const end = poiById.get(endPoiId);
-  if (!start || !end) return null;
+/**
+ * Routes directly from the fixed "You Are Here" point to the selected zone's centroid.
+ * With grid pathfinding falls back to a straight line only if the grid genuinely can't
+ * connect them (disconnected regions); without a grid (not yet loaded), a straight line
+ * is the best available approximation until it arrives.
+ */
+export function routeToZone(youAreHere: { x: number; y: number }, zone: Zone, grid?: OccupancyGrid): RouteResult | null {
+  const target = polygonCentroid(zone.points);
 
-  if (start.id === end.id) {
-    return { points: [{ x: start.x, y: start.y }], distance: 0 };
+  if (!grid) {
+    return { points: [youAreHere, target], distance: distance(youAreHere, target) };
   }
 
-  const wpById = new Map(graph.waypoints.map((w) => [w.id, w]));
-  const startWp = wpById.get(start.nearestWaypoint);
-  const endWp = wpById.get(end.nearestWaypoint);
-  if (!startWp || !endWp) return null;
-
-  if (startWp.id === endWp.id) {
-    const d = distance(start, startWp) + distance(startWp, end);
-    return {
-      points: [
-        { x: start.x, y: start.y },
-        { x: startWp.x, y: startWp.y },
-        { x: end.x, y: end.y },
-      ],
-      distance: d,
-    };
+  const result = findGridPath(grid, youAreHere, target);
+  if (!result) {
+    return { points: [youAreHere, target], distance: distance(youAreHere, target) };
   }
-
-  const adj = buildAdjacency(graph.waypoints, graph.edges);
-  const { dist, prev } = dijkstra(adj, startWp.id);
-
-  const totalToEnd = dist.get(endWp.id);
-  if (totalToEnd === undefined || totalToEnd === Infinity) return null;
-
-  const waypointPath: string[] = [];
-  let cur: string | null = endWp.id;
-  while (cur !== null) {
-    waypointPath.unshift(cur);
-    cur = prev.get(cur) ?? null;
-  }
-
-  const points = [
-    { x: start.x, y: start.y },
-    ...waypointPath.map((id) => {
-      const wp = wpById.get(id)!;
-      return { x: wp.x, y: wp.y };
-    }),
-    { x: end.x, y: end.y },
-  ];
-
-  const totalDistance = distance(start, startWp) + totalToEnd + distance(endWp, end);
-
-  return { points, distance: totalDistance };
+  return { points: result.points, distance: result.distancePx };
 }

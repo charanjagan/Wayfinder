@@ -6,8 +6,6 @@ const config: Config = {
     extend: {
       colors: {
         zone: '#6366f1',
-        room: '#059669',
-        facility: '#d97706',
       },
       keyframes: {
         dash: {

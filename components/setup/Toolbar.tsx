@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import type { Tool } from './SetupEditor';
 
 export default function Toolbar({
@@ -13,6 +14,7 @@ export default function Toolbar({
   saveStatus,
   previewMode,
   onTogglePreview,
+  onResetZoom,
 }: {
   tool: Tool;
   onToolChange: (tool: Tool) => void;
@@ -24,11 +26,12 @@ export default function Toolbar({
   saveStatus: 'idle' | 'saving' | 'saved' | 'error';
   previewMode: boolean;
   onTogglePreview: () => void;
+  onResetZoom: () => void;
 }) {
   const tools: { id: Tool; label: string }[] = [
     { id: 'select', label: 'Select' },
-    { id: 'waypoint', label: 'Waypoint' },
-    { id: 'poi', label: 'POI' },
+    { id: 'zone', label: 'Zone' },
+    { id: 'here', label: 'You Are Here' },
   ];
 
   return (
@@ -65,6 +68,15 @@ export default function Toolbar({
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        <Link href="/admin" className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
+          ← Admin
+        </Link>
+        <button
+          onClick={onResetZoom}
+          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+        >
+          Reset zoom
+        </button>
         <button
           onClick={onTogglePreview}
           className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"

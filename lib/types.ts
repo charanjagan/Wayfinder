@@ -1,5 +1,3 @@
-export type Category = 'zone' | 'room' | 'facility';
-
 export interface FloorPlan {
   id: string;
   name: string;
@@ -8,38 +6,24 @@ export interface FloorPlan {
   imageHeight: number;
 }
 
-export interface Waypoint {
-  id: string;
-  x: number;
-  y: number;
-}
-
-export interface Edge {
-  from: string;
-  to: string;
-}
-
-export interface POI {
-  id: string;
-  name: string;
-  category: Category;
-  x: number;
-  y: number;
-  nearestWaypoint: string;
-  aliases?: string[];
-  isEntrance?: boolean;
-}
-
 export interface Graph {
   floorPlan: FloorPlan;
-  waypoints: Waypoint[];
-  edges: Edge[];
-  pois: POI[];
+  /** Fixed kiosk/reception point routes are drawn from. Admin-placed, single point. */
+  youAreHere: { x: number; y: number } | null;
 }
 
-export interface FloorPlanSummary {
+export interface Zone {
   id: string;
   name: string;
-  createdAt: string;
-  thumbnail: string;
+  points: [number, number][];
+  hidden: boolean;
+}
+
+export interface Label {
+  id: string;
+  text: string;
+  type: 'workstation' | 'zone' | 'room' | 'facility';
+  x: number;
+  y: number;
+  associatedZone: string | null;
 }
