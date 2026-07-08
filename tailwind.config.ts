@@ -5,15 +5,34 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        zone: '#6366f1',
+        surface: '#FAFAFA',
+        ink: '#1E2328',
+        border: '#D8DBDF',
+        accent: '#2954D9',
+        'accent-hover': '#1F41AD',
+      },
+      fontFamily: {
+        sans: [
+          'Inter',
+          '-apple-system',
+          'Segoe UI',
+          'Roboto',
+          'system-ui',
+          'sans-serif',
+        ],
+      },
+      borderRadius: {
+        sm: '2px',
+        DEFAULT: '3px',
+        md: '4px',
       },
       keyframes: {
-        dash: {
-          to: { strokeDashoffset: '-24' },
+        flow: {
+          to: { strokeDashoffset: '-20' },
         },
       },
       animation: {
-        dash: 'dash 1s linear infinite',
+        flow: 'flow 0.6s linear infinite',
       },
     },
   },
