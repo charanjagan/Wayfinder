@@ -25,10 +25,24 @@ export const ZONE_CATEGORIES = [
   'Workstation H',
   'Workstation I',
   'ODC',
+  'CO1',
+  'CO2',
+  'CO3',
+  'INFA',
   'Meeting Room',
+  'Board Room',
   'Cabin',
   'Cafeteria',
   'Lift Lobby',
+  'Pantry',
+  'Server Room',
+  'Toilet',
+  'Huddle Room',
+  'Phone Booth',
+  'Prayer Room',
+  'Collab Room',
+  'Training Room',
+  'Store Room',
   'Other',
 ] as const;
 
@@ -63,4 +77,8 @@ export interface FloorConfig {
   grid: OccupancyGrid | null;
   zones: Zone[];
   pois: POI[];
+  /** Fixed "You are here" origin in source-image pixels -- the kiosk's own
+   * physical spot, set once by an admin in Setup. Every Wayfinder route starts
+   * here; null until an admin places it. */
+  origin: { x: number; y: number } | null;
 }

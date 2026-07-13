@@ -4,10 +4,14 @@ import { readFloorConfig, writeFloorConfig } from '@/lib/storage';
 import { generateGrid, gridCachePath } from '@/lib/navgrid';
 import { promises as fs } from 'fs';
 import type { OccupancyGrid } from '@/lib/types';
+import { requireAdminApi } from '@/lib/adminAuth';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 
 export async function POST(request: NextRequest, { params }: { params: { floorId: string } }) {
+  const authError = await requireAdminApi(request);
+  if (authError) return authError;
+
   const config = await readFloorConfig(params.floorId);
   if (!config) {
     return NextResponse.json({ error: 'floor not found' }, { status: 404 });

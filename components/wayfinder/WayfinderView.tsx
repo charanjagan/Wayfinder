@@ -1,7 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
+import { useCallback, useEffect, useState } from 'react';
 import FloorImageStage, { type NaturalSize } from '../FloorImageStage';
 import Breadcrumb from './Breadcrumb';
 import Directions from './Directions';
@@ -13,8 +12,6 @@ interface RouteResult {
   points: { x: number; y: number }[];
   distancePx: number;
 }
-
-const ORIGIN_NAME_HINT = /entrance|lobby|reception|kiosk/i;
 
 export default function WayfinderView({
   config,
@@ -31,49 +28,65 @@ export default function WayfinderView({
 
   const destinations = toDestinations(config.zones, config.pois);
 
-  // No check-in/beacon system exists yet, so "you are here" is approximated as a
-  // named entrance/lobby/reception POI if the floor has one, else the image center.
-  function originPoint(): { x: number; y: number } {
-    const hinted = config.pois.find((p) => ORIGIN_NAME_HINT.test(p.name) || ORIGIN_NAME_HINT.test(p.type));
-    if (hinted) return { x: hinted.x, y: hinted.y };
-    return { x: (natural?.width ?? 0) / 2, y: (natural?.height ?? 0) / 2 };
+  // "You are here" is the kiosk's own fixed spot, placed once by an admin in
+  // Setup -- every route starts here. End users only pick a destination.
+  const origin = config.origin;
+
+  // A whole-floor workstation zone (its polygon is the entire open region) is
+  // meaningless to draw as an outline. Zones are non-interactive outlines only;
+  // navigation targets come from the directory or POI markers.
+  const imageArea = natural ? natural.width * natural.height : 0;
+  function isWholeFloorZone(points: { x: number; y: number }[]): boolean {
+    if (!imageArea) return false;
+    const xs = points.map((p) => p.x);
+    const ys = points.map((p) => p.y);
+    const bboxArea = (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
+    return bboxArea > 0.6 * imageArea;
   }
 
-  async function navigateTo(dest: Destination) {
-    setDestination(dest);
-    setRoute(null);
-    setRouteError(null);
-    if (!config.grid) {
-      setRouteError('This floor has no navigable grid yet.');
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/floors/${config.id}/route`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ start: originPoint(), end: dest.point }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setRouteError(body.error ?? 'No path found.');
+  const computeRoute = useCallback(
+    async (to: Destination) => {
+      setRoute(null);
+      setRouteError(null);
+      if (!origin) {
+        setRouteError('No “You are here” point set for this floor yet. An admin must place it in Setup.');
         return;
       }
-      setRoute(await res.json());
-    } finally {
-      setLoading(false);
-    }
-  }
+      if (!config.grid) {
+        setRouteError('This floor has no navigable grid yet.');
+        return;
+      }
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/floors/${config.id}/route`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ start: origin, end: to.point }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          setRouteError(body.error ?? 'No path found.');
+          return;
+        }
+        setRoute(await res.json());
+      } finally {
+        setLoading(false);
+      }
+    },
+    [config.id, config.grid, origin],
+  );
+
+  useEffect(() => {
+    if (destination) computeRoute(destination);
+  }, [destination, computeRoute]);
 
   const directionSteps = route ? buildDirections(route.points, config.pixelToMm) : [];
+  const markerR = natural ? Math.max(4, natural.width * 0.004) : 5;
 
   return (
     <div className="flex h-screen flex-col">
       <header className="flex items-center justify-between border-b border-border bg-white px-4 py-2.5">
         <div className="flex items-center gap-3">
-          <Link href="/" className="text-sm text-ink/50 hover:text-ink">
-            ← Floors
-          </Link>
           <h1 className="text-sm font-semibold">Wayfinder — {config.name}</h1>
         </div>
         {floors.length > 1 && (
@@ -97,9 +110,18 @@ export default function WayfinderView({
 
       <div className="flex min-h-0 flex-1">
         <aside className="w-80 shrink-0 overflow-y-auto border-r border-border bg-white p-4">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-ink/50">Directory</h2>
+          <div className="border border-border bg-surface p-2.5 text-xs">
+            <span className="font-medium">You are here</span>
+            <p className="mt-1 text-ink/60">
+              {origin
+                ? 'Pick a destination below to see the route from here.'
+                : 'Not set for this floor. An admin must place it in Setup.'}
+            </p>
+          </div>
+
+          <h2 className="mt-4 text-xs font-semibold uppercase tracking-wide text-ink/50">Directory</h2>
           <div className="mt-2">
-            <DirectorySearch destinations={destinations} onSelect={navigateTo} />
+            <DirectorySearch destinations={destinations} onSelect={setDestination} />
           </div>
         </aside>
 
@@ -111,7 +133,7 @@ export default function WayfinderView({
             overlay={() => (
               <>
                 {config.zones
-                  .filter((z) => !z.hidden)
+                  .filter((z) => !z.hidden && !isWholeFloorZone(z.points))
                   .map((zone) => (
                     <polygon
                       key={zone.id}
@@ -119,18 +141,7 @@ export default function WayfinderView({
                       fill="transparent"
                       stroke="#D8DBDF"
                       strokeWidth={1}
-                      className="cursor-pointer hover:fill-accent/5"
-                      onClick={() =>
-                        navigateTo({
-                          id: `zone:${zone.id}`,
-                          name: zone.name,
-                          subtitle: zone.category,
-                          point: zone.points.reduce(
-                            (acc, p) => ({ x: acc.x + p.x / zone.points.length, y: acc.y + p.y / zone.points.length }),
-                            { x: 0, y: 0 },
-                          ),
-                        })
-                      }
+                      style={{ pointerEvents: 'none' }}
                     />
                   ))}
 
@@ -139,11 +150,16 @@ export default function WayfinderView({
                     key={poi.id}
                     cx={poi.x}
                     cy={poi.y}
-                    r={natural ? Math.max(4, natural.width * 0.004) : 5}
+                    r={markerR}
                     fill={destination?.id === `poi:${poi.id}` ? '#2954D9' : '#1E2328'}
                     className="cursor-pointer"
                     onClick={() =>
-                      navigateTo({ id: `poi:${poi.id}`, name: poi.name, subtitle: poi.type || 'POI', point: { x: poi.x, y: poi.y } })
+                      setDestination({
+                        id: `poi:${poi.id}`,
+                        name: poi.name,
+                        subtitle: poi.type || 'POI',
+                        point: { x: poi.x, y: poi.y },
+                      })
                     }
                   />
                 ))}
@@ -156,14 +172,26 @@ export default function WayfinderView({
                     strokeWidth={natural ? Math.max(2, natural.width * 0.003) : 3}
                     strokeDasharray="10 8"
                     className="animate-flow"
+                    style={{ pointerEvents: 'none' }}
                   />
                 )}
+
+                {origin && (
+                  <g style={{ pointerEvents: 'none' }}>
+                    <circle cx={origin.x} cy={origin.y} r={markerR * 1.4} fill="#16A34A" stroke="#ffffff" strokeWidth={1.5} />
+                    <text x={origin.x + markerR * 2} y={origin.y + markerR} fontSize={natural ? natural.width * 0.012 : 12} fill="#16A34A">
+                      You are here
+                    </text>
+                  </g>
+                )}
+
                 {route && (
                   <circle
                     cx={route.points[route.points.length - 1].x}
                     cy={route.points[route.points.length - 1].y}
                     r={natural ? Math.max(5, natural.width * 0.005) : 6}
                     fill="#2954D9"
+                    style={{ pointerEvents: 'none' }}
                   />
                 )}
               </>

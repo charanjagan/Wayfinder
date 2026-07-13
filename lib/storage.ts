@@ -46,6 +46,7 @@ export function createEmptyFloorConfig(id: string, name: string): FloorConfig {
     grid: null,
     zones: [],
     pois: [],
+    origin: null,
   };
 }
 
